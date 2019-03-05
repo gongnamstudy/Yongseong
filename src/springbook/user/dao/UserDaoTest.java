@@ -19,13 +19,13 @@ import javax.sql.DataSource;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
 
-@RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration(locations = "/applicationConfig.xml")
-@DirtiesContext
+//@RunWith(SpringJUnit4ClassRunner.class)
+//@ContextConfiguration(locations = "/test-applicationConfig.xml")
+//@DirtiesContext
 public class UserDaoTest {
 //    @Autowired
 //    private ApplicationContext context;
-    @Autowired
+//    @Autowired
     UserDao dao;
 
     private User user1;
@@ -40,8 +40,9 @@ public class UserDaoTest {
         this.user2 = new User("leegw700", "이길원", "springno2");
         this.user3 = new User("bumjin", "박범진", "springno3");
 
+        dao = new UserDao();
         DataSource dataSource = new SingleConnectionDataSource(
-                "jdbc:mysql://localhost/testdb", "root", "", true);
+                "jdbc:mysql://localhost/testdb?characterEncoding=UTF-8", "root", "", true);
         dao.setDataSource(dataSource);
     }
 
