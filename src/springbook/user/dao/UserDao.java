@@ -5,31 +5,37 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+import org.springframework.beans.factory.config.PreferencesPlaceholderConfigurer;
 import org.springframework.dao.EmptyResultDataAccessException;
 import springbook.user.domain.User;
 
 import javax.sql.DataSource;
+import javax.xml.transform.Result;
 
 public class UserDao {
+    private JdbcContext jdbcContext;
     private DataSource dataSource;
+
+    public void setJdbcContext(JdbcContext jdbcContext) {
+        this.jdbcContext = jdbcContext;
+    }
 
     public void setDataSource(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
-    public void add(User user) throws SQLException {
-        Connection c = dataSource.getConnection();
+    public void add(final User user) throws SQLException {
+        this.jdbcContext.workWithStatementStrategy(new StatementStrategy() {
+            public PreparedStatement makePreparedStatement(Connection c) throws SQLException {
+                PreparedStatement ps = c.prepareStatement("insert into users(id, name, password) values(?, ?, ?)");
 
-        PreparedStatement ps = c.prepareStatement(
-                "insert into users(id, name, password) values(?,?,?)");
-        ps.setString(1, user.getId());
-        ps.setString(2, user.getName());
-        ps.setString(3, user.getPassword());
+                ps.setString(1, user.getId());
+                ps.setString(2, user.getName());
+                ps.setString(3, user.getPassword());
 
-        ps.executeUpdate();
-
-        ps.close();
-        c.close();
+                return ps;
+            }
+        });
     }
 
     public User get(String id) throws SQLException {
@@ -61,30 +67,52 @@ public class UserDao {
     }
 
     public void deleteAll() throws SQLException {
-        Connection c = dataSource.getConnection();
-
-        PreparedStatement ps = c.prepareStatement(
-                "delete from users");
-        ps.executeUpdate();
-
-        ps.close();
-        c.close();
+        this.jdbcContext.workWithStatementStrategy(new StatementStrategy() {
+            public PreparedStatement makePreparedStatement(Connection c) throws SQLException {
+                PreparedStatement ps = c.prepareStatement("delete from users");
+                return ps;
+            }
+        });
     }
 
     public int getCount() throws SQLException {
         Connection c = dataSource.getConnection();
+        PreparedStatement ps = null;
+        ResultSet rs = null;
 
-        PreparedStatement ps = c.prepareStatement(
-                "select count(*) from users");
+        try {
+            c = dataSource.getConnection();
 
-        ResultSet rs = ps.executeQuery();
-        rs.next();
-        int count = rs.getInt(1);
+            ps = c.prepareStatement("select count(*) from users");
 
-        rs.close();
-        ps.close();
-        c.close();
+            rs = ps.executeQuery();
+            rs.next();
+            return rs.getInt(1);
+        } catch (SQLException e) {
+            throw e;
+        } finally {
+            if (rs != null) {
+                try {
+                    rs.close();
+                } catch (SQLException e) {
 
-        return count;
+                }
+            }
+            if (ps != null) {
+                try {
+                    ps.close();
+                } catch (SQLException e) {
+
+                }
+            }
+            if (c != null) {
+                try {
+                    c.close();
+                } catch (SQLException e) {
+
+                }
+            }
+        }
     }
 }
+
