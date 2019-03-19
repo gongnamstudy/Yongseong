@@ -18,6 +18,10 @@ public class JdbcContext {
 
         try {
             c = this.dataSource.getConnection();
+
+            ps = stmt.makePreparedStatement(c);
+
+            ps.executeUpdate();
         } catch (SQLException e) {
             throw e;
         } finally {
@@ -36,5 +40,13 @@ public class JdbcContext {
                 }
             }
         }
+    }
+
+    public void executeSql(final String query) throws SQLException {
+        workWithStatementStrategy(new StatementStrategy() {
+            public PreparedStatement makePreparedStatement(Connection c) throws SQLException {
+                return c.prepareStatement(query);
+            }
+        });
     }
 }
