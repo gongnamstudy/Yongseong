@@ -6,10 +6,12 @@ import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.transaction.PlatformTransactionManager;
 import springbook.user.dao.UserDao;
 import springbook.user.domain.Level;
 import springbook.user.domain.User;
 
+import javax.sql.DataSource;
 import java.util.Arrays;
 import java.util.List;
 
@@ -27,22 +29,26 @@ public class UserServiceTest {
     UserService userService;
     @Autowired
     UserDao userDao;
+    @Autowired
+    DataSource dataSource;
+    @Autowired
+    PlatformTransactionManager transactionManager;
 
     List<User> users;
 
     @Before
     public void setUp() {
         users = Arrays.asList(
-                new User("bumjin", "박범진", "p1", Level.BASIC, MIN_LOGCOUNT_FOR_SILVER - 1,0),
-                new User("joytouch", "강명성", "p2", Level.BASIC, MIN_LOGCOUNT_FOR_SILVER,0),
-                new User("erwins", "신승한", "p3", Level.SILVER, 60,MIN_RECCOMEND_FOR_GOLD - 1),
-                new User("madnite1", "이상호", "p4", Level.SILVER, 60,MIN_RECCOMEND_FOR_GOLD),
-                new User("green", "오민규", "p5", Level.GOLD, 100,Integer.MAX_VALUE)
+                new User("bumjin", "박범진", "p1", "user1@kugs.org", Level.BASIC, MIN_LOGCOUNT_FOR_SILVER - 1, 0),
+                new User("joytouch", "강명성", "p2", "user2@kugs.org", Level.BASIC, MIN_LOGCOUNT_FOR_SILVER, 0),
+                new User("erwins", "신승한", "p3", "user3@kugs.org", Level.SILVER, 60, MIN_RECCOMEND_FOR_GOLD - 1),
+                new User("madnite1", "이상호", "p4", "user4@kugs.org", Level.SILVER, 60, MIN_RECCOMEND_FOR_GOLD),
+                new User("green", "오민규", "p5", "user5@kugs.org", Level.GOLD, 100, Integer.MAX_VALUE)
         );
     }
 
     @Test
-    public void upgradeLevels() {
+    public void upgradeLevels() throws Exception {
         userDao.deleteAll();
         for (User user : users) userDao.add(user);
 
@@ -83,9 +89,10 @@ public class UserServiceTest {
     }
 
     @Test
-    public void upgraedAllOrNothing() {
+    public void upgraedAllOrNothing() throws Exception {
         UserService testUserService = new TestUserService(users.get(3).getId());
         testUserService.setUserDao(this.userDao);
+        testUserService.setTransactionManager(transactionManager);
 
         userDao.deleteAll();
         for (User user : users) userDao.add(user);
