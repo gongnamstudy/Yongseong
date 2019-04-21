@@ -3,10 +3,13 @@ package springbook.user.service;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.springframework.aop.framework.ProxyFactoryBean;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.mail.MailException;
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -15,6 +18,7 @@ import springbook.user.domain.Level;
 import springbook.user.domain.User;
 
 import javax.sql.DataSource;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -23,14 +27,16 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
-import static springbook.user.service.UserService.MIN_LOGCOUNT_FOR_SILVER;
-import static springbook.user.service.UserService.MIN_RECCOMEND_FOR_GOLD;
+import static springbook.user.service.UserServiceImpl.MIN_LOGCOUNT_FOR_SILVER;
+import static springbook.user.service.UserServiceImpl.MIN_RECCOMEND_FOR_GOLD;
 
 @RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(locations = "/test-applicationConfig.xml")
 public class UserServiceTest {
     @Autowired
     UserService userService;
+    @Autowired
+    UserServiceImpl userServiceImpl;
     @Autowired
     UserDao userDao;
     @Autowired
@@ -39,6 +45,8 @@ public class UserServiceTest {
     PlatformTransactionManager transactionManager;
     @Autowired
     MailSender mailSender;
+    @Autowired
+    ApplicationContext context;
 
     List<User> users;
 
@@ -55,19 +63,30 @@ public class UserServiceTest {
 
     @Test
     public void upgradeLevels() throws Exception {
-        userDao.deleteAll();
-        for (User user : users) userDao.add(user);
+        UserServiceImpl userServiceImpl = new UserServiceImpl();
+
+        MockUserDao mockUserDao = new MockUserDao(this.users);
+        userServiceImpl.setUserDao(mockUserDao);
 
         MockMailSender mockMailSender = new MockMailSender();
-        userService.setMailSender(mockMailSender);
+        userServiceImpl.setMailSender(mockMailSender);
 
-        userService.upgradeLevels();
+        userServiceImpl.upgradeLevels();
 
-        checkLevelUpgraded(users.get(0), false);
-        checkLevelUpgraded(users.get(1), true);
-        checkLevelUpgraded(users.get(2), false);
-        checkLevelUpgraded(users.get(3), true);
-        checkLevelUpgraded(users.get(4), false);
+        List<User> updated = mockUserDao.getUpdated();
+        assertThat(updated.size(), is(2));
+        checkUserAndLevel(updated.get(0), "joytouch", Level.SILVER);
+        checkUserAndLevel(updated.get(1), "madnite1", Level.GOLD);
+
+        List<String> request = mockMailSender.getRequests();
+        assertThat(request.size(), is(2));
+        assertThat(request.get(0), is(users.get(1).getEmail()));
+        assertThat(request.get(1), is(users.get(3).getEmail()));
+    }
+
+    private void checkUserAndLevel(User updated, String expectedId, Level expectedLevel) {
+        assertThat(updated.getId(), is(expectedId));
+        assertThat(updated.getLevel(), is(expectedLevel));
     }
 
     private void checkLevelUpgraded(User user, boolean upgraded) {
@@ -98,17 +117,29 @@ public class UserServiceTest {
     }
 
     @Test
+    @DirtiesContext
     public void upgraedAllOrNothing() throws Exception {
-        UserService testUserService = new TestUserService(users.get(3).getId());
+        TestUserService testUserService = new TestUserService(users.get(3).getId());
         testUserService.setUserDao(this.userDao);
-        testUserService.setTransactionManager(transactionManager);
         testUserService.setMailSender(mailSender);
+
+        ProxyFactoryBean txProxyFactoryBean = context.getBean("&userService", ProxyFactoryBean.class);
+        txProxyFactoryBean.setTarget(testUserService);
+        UserService txuserService = (UserService) txProxyFactoryBean.getObject();
+
+        TransactionHandler txHandler = new TransactionHandler();
+        txHandler.setTarget(testUserService);
+        txHandler.setTransactionManager(transactionManager);
+        txHandler.setPattern("upgradeLevels");
+
+        UserService txUserService = (UserService) Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class[] { UserService.class }, txHandler);
 
         userDao.deleteAll();
         for (User user : users) userDao.add(user);
 
         try {
-            testUserService.upgradeLevels();
+            txUserService.upgradeLevels();
             fail("TestUserServiceException expected");
         } catch (TestUserServiceException e) {
 
@@ -117,7 +148,7 @@ public class UserServiceTest {
         checkLevelUpgraded(users.get(1), false);
     }
 
-    static class TestUserService extends UserService {
+    static class TestUserService extends UserServiceImpl {
         private String id;
 
         private TestUserService(String id) {
@@ -150,5 +181,31 @@ public class UserServiceTest {
         public void send(SimpleMailMessage[] mailMessage) throws MailException {
 
         }
+    }
+
+    static class MockUserDao implements UserDao {
+        private List<User> users;
+        private List<User> updated = new ArrayList<>();
+
+        private MockUserDao(List<User> users) {
+            this.users = users;
+        }
+
+        public List<User> getUpdated() {
+            return this.updated;
+        }
+
+        public List<User> getAll() {
+            return this.users;
+        }
+
+        public void update(User user) {
+            updated.add(user);
+        }
+
+        public void add(User user) { throw new UnsupportedOperationException(); }
+        public void deleteAll() { throw new UnsupportedOperationException(); }
+        public User get(String id) { throw new UnsupportedOperationException(); }
+        public int getCount() { throw new UnsupportedOperationException(); }
     }
 }
